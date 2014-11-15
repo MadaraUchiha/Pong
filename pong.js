@@ -6,25 +6,20 @@
     var paddles = [];
     var ball;
 
-    var entities =  [];
+    var entities = [];
 
     function init() {
         ctx.fillStyle = 'black';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        paddles.push(new Paddle(new Vector(30, canvas.height / 2), 100, 1, Paddle.ai));
-        paddles.push(new Paddle(Vector.reverse(30, canvas.height / 2), 100, 1, Paddle.ai));
+        paddles.push(new Paddle(new Vector(30, canvas.height / 2), 100, 3));
+        paddles.push(new Paddle(Vector.reverse(30, canvas.height / 2), 100, 2));
 
         ball = new Ball(Vector.CENTER.add(new Vector(-10, 50)), 10);
 
         entities = entities.concat(paddles, ball);
         window.requestAnimationFrame(loop);
     }
-
-
-
-
-
 
 
     /**
@@ -43,7 +38,7 @@
     };
 
     Vector.prototype.add = function (vector) {
-        return new Vector(this.x + vector.y, this.y + vector.y);
+        return new Vector(this.x + vector.x, this.y + vector.y);
     };
 
 //    Vector.prototype.subtract = function (vector) {
@@ -57,6 +52,11 @@
     Vector.CENTER = new Vector(canvas.width / 2, canvas.height / 2);
 
 
+    /**
+     * @abstract
+     * @param centerPosition
+     * @constructor
+     */
     function Entity(centerPosition) {
         this.position = centerPosition;
     }
@@ -70,15 +70,15 @@
             }
         },
         clear: function () {
-            throw new Error('clear should be implemented with extending objects');
+            this.draw('black');
         },
-        draw: function () {
+        draw: function (fill) {
             throw new Error('draw should be implemented with extending objects');
+        },
+        canMoveTo: function () {
+            throw new Error('canMoveTo should be implemented with extending objects');
         }
     };
-
-
-
 
 
     /**
@@ -87,75 +87,89 @@
      * @param {Vector} centerPosition
      * @param {Number} width
      * @param {Number} movingSpeed
-     * @param {function(Ball)} moveLogic
+     * @param {function(Ball)=} moveLogic
      * @constructor
      */
     function Paddle(centerPosition, width, movingSpeed, moveLogic) {
-        Entity.constructor.call(this, centerPosition);
+        Entity.call(this, centerPosition);
         this.width = width;
         this.speed = movingSpeed;
-        this.moveLogic = moveLogic;
+        this.moveLogic = moveLogic || this.ai;
     }
 
-    Paddle.prototype = Object.create(Entity.prototype, {
-        thickness: 20,
-        draw: function () {
-            var origin = this.getOriginVector();
+    Paddle.prototype = Object.create(Entity.prototype);
 
-            ctx.fillStyle = 'white';
-            ctx.fillRect(origin.x, origin.y, this.thickness, this.width);
-        },
-        getOriginVector: function () {
-            var x = this.position.x - this.thickness / 2;
-            var y = this.position.y - this.width / 2;
-            return new Vector(x, y);
-        },
-        clear: function () {
-            ctx.fillStyle = 'black';
+    Paddle.prototype.thickness = 20;
 
-            var origin = this.getOriginVector();
-            ctx.fillRect(origin.x, origin.y, this.thickness, this.width);
-        }
-    });
+    Paddle.prototype.draw = function (fill) {
+        var origin = this.getOriginVector();
 
-    Paddle.ai = function (paddle, ball) {
-        function findMoveVector(ball) {
-            var delta = ball.position.y - paddle.position.y,
+        ctx.fillStyle = fill || 'white';
+        ctx.fillRect(origin.x, origin.y, this.thickness, this.width);
+    };
+
+    Paddle.prototype.getOriginVector = function () {
+        var x = this.position.x - this.thickness / 2;
+        var y = this.position.y - this.width / 2;
+        return new Vector(x, y);
+    };
+
+    Paddle.prototype.canMoveTo = function (newPosition) {
+        var newY = newPosition.y - (this.width / 2);
+        return newY >= 0 && newY + this.width <= canvas.height;
+    };
+
+    Paddle.prototype.ai = function (ball) {
+        var findMoveVector = function(ball) {
+            var delta = ball.position.y - this.position.y,
                 direction = delta / Math.abs(delta);
 
-            return new Vector(0, direction).multiply(paddle.speed);
-        }
+            return new Vector(0, direction).multiply(this.speed);
+        }.bind(this);
+
         return this.position.add(findMoveVector(ball));
     };
 
 
     /**
-     *
+     * @extends Entity
      * @param centerPosition
      * @param radius
      * @constructor
      */
     function Ball(centerPosition, radius) {
-        Entity.constructor.call(this, centerPosition);
+        Entity.call(this, centerPosition);
         this.radius = radius;
     }
 
-    Ball.prototype = Object.create(Entity.prototype, {
-        draw: function () {
-            ctx.fillStyle = 'white';
-            ctx.strokeStyle = 'white';
-            ctx.arc(this.position.x, this.position.y - this.radius, this.radius, 0, Math.PI * 2);
-            ctx.fill();
-        },
-        speed: 30
-    });
+    Ball.prototype = Object.create(Entity.prototype);
+    Ball.prototype.draw = function (fill) {
+        ctx.fillStyle = fill || 'white';
+        ctx.arc(this.position.x, this.position.y - this.radius, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+    };
+    Ball.prototype.canMoveTo = function(newPosition) {
+        var newTop = newPosition.y - this.radius;
+        var newLeft = newPosition.x - this.radius;
+        var newBottom = newPosition.y + this.radius;
+        var newRight = newPosition.x + this.radius;
+
+        return newTop >= 0 && newLeft >= 0 && newBottom <= canvas.height && newRight <= canvas.width;
+    };
+    Ball.prototype.moveLogic = function() {
+        return this.position.add(new Vector(this.speed * Math.cos(this.moveDirection), this.speed * Math.sin(this.moveDirection)));
+    };
+    Ball.prototype.speed = 4;
+    Ball.prototype.moveDirection = Math.PI / 4;
+
 
     function loop() {
-        entities.forEach(function drawPaddle(entity) {
-            var newPosition = entity.moveLogic();
+        entities.forEach(function moveEntities(entity) {
+            var newPosition = entity.moveLogic(ball);
             entity.moveTo(newPosition);
         });
 
+        window.requestAnimationFrame(loop);
     }
 
     init();
