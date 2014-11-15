@@ -8,12 +8,15 @@
 
     var entities = [];
 
+    var HORIZONTAL = 0;
+    var VERTICAL = Math.PI;
+
     function init() {
         ctx.fillStyle = 'black';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        paddles.push(new Paddle(new Vector(30, canvas.height / 2), 100, 3));
-        paddles.push(new Paddle(Vector.reverse(30, canvas.height / 2), 100, 2));
+        paddles.push(new Paddle(new Vector(30, canvas.height / 2), 100, 15));
+        paddles.push(new Paddle(Vector.reverse(30, canvas.height / 2), 100, 25));
 
         ball = new Ball(Vector.CENTER.add(new Vector(-10, 50)), 10);
 
@@ -41,12 +44,12 @@
         return new Vector(this.x + vector.x, this.y + vector.y);
     };
 
-//    Vector.prototype.subtract = function (vector) {
-//        return new Vector(this.x - vector.y, this.y - vector.y);
-//    };
-
     Vector.prototype.multiply = function (scalar) {
         return new Vector(this.x * scalar, this.y * scalar);
+    };
+
+    Vector.prototype.inBounds = function () {
+        return this.x >= 0 && this.x <= canvas.width && this.y >= 0 && this.y <= canvas.height;
     };
 
     Vector.CENTER = new Vector(canvas.width / 2, canvas.height / 2);
@@ -64,19 +67,18 @@
     Entity.prototype = {
         moveTo: function (newPosition) {
             if (this.canMoveTo(newPosition)) {
-                this.clear();
                 this.position = newPosition;
-                this.draw();
             }
+            this.draw();
         },
-        clear: function () {
-            this.draw('black');
-        },
-        draw: function (fill) {
+        draw: function () {
             throw new Error('draw should be implemented with extending objects');
         },
         canMoveTo: function () {
             throw new Error('canMoveTo should be implemented with extending objects');
+        },
+        overlaps: function (vector) {
+            throw new Error('overlaps should be implemented with extending objects');
         }
     };
 
@@ -101,10 +103,10 @@
 
     Paddle.prototype.thickness = 20;
 
-    Paddle.prototype.draw = function (fill) {
+    Paddle.prototype.draw = function () {
         var origin = this.getOriginVector();
 
-        ctx.fillStyle = fill || 'white';
+        ctx.fillStyle = 'white';
         ctx.fillRect(origin.x, origin.y, this.thickness, this.width);
     };
 
@@ -124,10 +126,22 @@
             var delta = ball.position.y - this.position.y,
                 direction = delta / Math.abs(delta);
 
+            if (Math.abs(delta) < this.width / 2) {
+                direction = 0;
+            }
+
             return new Vector(0, direction).multiply(this.speed);
         }.bind(this);
 
         return this.position.add(findMoveVector(ball));
+    };
+    Paddle.prototype.overlaps = function (vector) {
+        /* jshint -W014 */
+        var origin = this.getOriginVector();
+        return vector.x >= origin.x
+            && vector.x <= origin.x + this.thickness
+            && vector.y >= origin.y
+            && vector.y <= origin.y + this.width;
     };
 
 
@@ -143,27 +157,68 @@
     }
 
     Ball.prototype = Object.create(Entity.prototype);
-    Ball.prototype.draw = function (fill) {
-        ctx.fillStyle = fill || 'white';
+    Ball.prototype.draw = function () {
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
         ctx.arc(this.position.x, this.position.y - this.radius, this.radius, 0, Math.PI * 2);
+        ctx.closePath();
         ctx.fill();
     };
-    Ball.prototype.canMoveTo = function(newPosition) {
-        var newTop = newPosition.y - this.radius;
-        var newLeft = newPosition.x - this.radius;
-        var newBottom = newPosition.y + this.radius;
-        var newRight = newPosition.x + this.radius;
+    Ball.prototype.canMoveTo = function (newPosition) {
+        return Object.keys(this.collidesWith(newPosition, paddles)).length === 0;
+    };
+    Ball.prototype.collidesWith = function (newPosition, entities) {
+        var coordinates = {
+            top: new Vector(newPosition.x, newPosition.y - this.radius),
+            left: new Vector(newPosition.x - this.radius, newPosition.y),
+            bottom: new Vector(newPosition.x, newPosition.y + this.radius),
+            right: new Vector(newPosition.x + this.radius, newPosition.y)
+        };
 
-        return newTop >= 0 && newLeft >= 0 && newBottom <= canvas.height && newRight <= canvas.width;
+        return Object.keys(coordinates)
+            .map(function getCollisions(direction) {
+                var results = null;
+                entities.forEach(function addCollision(entity) {
+                    if (entity.overlaps(coordinates[direction])) {
+                        results = entity;
+                    }
+                });
+                if (!coordinates[direction].inBounds()) {
+                    results = canvas;
+                }
+                return {direction: direction, results: results};
+            }).filter(function removeEmpty(collisions) {
+                return collisions.results !== null;
+            }).reduce(function(obj, collisions) {
+                obj[collisions.direction] = collisions.results;
+                return obj;
+            }, {});
+
     };
-    Ball.prototype.moveLogic = function() {
-        return this.position.add(new Vector(this.speed * Math.cos(this.moveDirection), this.speed * Math.sin(this.moveDirection)));
+    Ball.prototype.moveLogic = function () {
+
+        var newPosition = this.position.add(new Vector(this.speed * Math.cos(this.moveDirection), this.speed * Math.sin(this.moveDirection)));
+        var collisions = this.collidesWith(newPosition, paddles);
+        if (collisions.top || collisions.bottom) {
+            this.moveDirection *= -1;
+            return this.moveLogic();
+        }
+        if (collisions.left || collisions.right) {
+            this.moveDirection = Math.PI - this.moveDirection;
+            if (collisions.left === canvas || collisions.right === canvas) {
+                return this.position; //GAME OVER!
+            }
+            return this.moveLogic();
+        }
+        return newPosition;
     };
-    Ball.prototype.speed = 4;
+    Ball.prototype.speed = 10;
     Ball.prototype.moveDirection = Math.PI / 4;
 
 
     function loop() {
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
         entities.forEach(function moveEntities(entity) {
             var newPosition = entity.moveLogic(ball);
             entity.moveTo(newPosition);
