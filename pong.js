@@ -8,15 +8,12 @@
 
     var entities = [];
 
-    var HORIZONTAL = 0;
-    var VERTICAL = Math.PI;
-
     function init() {
         ctx.fillStyle = 'black';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        paddles.push(new Paddle(new Vector(30, canvas.height / 2), 100, 15));
-        paddles.push(new Paddle(Vector.reverse(30, canvas.height / 2), 100, 25));
+        paddles.push(new Paddle(new Vector(30, canvas.height / 2), 100, 10));
+        paddles.push(new Paddle(Vector.reverse(30, canvas.height / 2), 100, 20));
 
         ball = new Ball(Vector.CENTER.add(new Vector(-10, 50)), 10);
 
@@ -201,18 +198,19 @@
         var collisions = this.collidesWith(newPosition, paddles);
         if (collisions.top || collisions.bottom) {
             this.moveDirection *= -1;
-            return this.moveLogic();
         }
         if (collisions.left || collisions.right) {
             this.moveDirection = Math.PI - this.moveDirection;
             if (collisions.left === canvas || collisions.right === canvas) {
                 return this.position; //GAME OVER!
             }
+        }
+        if (Object.keys(collisions).length !== 0) {
             return this.moveLogic();
         }
         return newPosition;
     };
-    Ball.prototype.speed = 10;
+    Ball.prototype.speed = 20;
     Ball.prototype.moveDirection = Math.PI / 4;
 
 
